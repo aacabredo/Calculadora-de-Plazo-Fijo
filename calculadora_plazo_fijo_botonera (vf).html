@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calculadora de Intereses de Depósito a Plazo Fijo</title>
+  <style>
+    :root{
+      --blue:#2775CA; /* USDC blue */
+      --green:#26A17B; /* USDT green */
+      --bg:#f4f9ff;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --ring:#93c5fd;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:#111}
+    .wrap{max-width:980px;margin:24px auto;padding:16px}
+    .card{background:var(--card);border-radius:16px;box-shadow:0 10px 24px rgba(2,8,20,.06);padding:20px}
+    h1{margin:0 0 4px;color:var(--blue)}
+    p.subtitle{margin:0 0 16px;color:var(--muted)}
+
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+    .col-12{grid-column:span 12}
+
+    label{font-weight:600;display:block;margin-bottom:8px}
+    .input{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #d1d5db;border-radius:12px;padding:12px 14px;outline:none;}
+    .input:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px var(--ring)}
+    .input input{border:none;outline:none;width:100%;font-size:18px}
+    .hint{color:var(--muted);font-size:12px;margin-top:6px}
+
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+    .chip{border:1px solid #e5e7eb;border-radius:999px;padding:6px 10px;font-size:12px;color:#374151;background:#fff;cursor:pointer}
+    .chip.active{background:var(--blue);border-color:var(--blue);color:#fff}
+
+    .options{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+    .option{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px;cursor:pointer;position:relative;transition:transform .08s ease, box-shadow .12s ease, border-color .12s ease;}
+    .option:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(2,8,20,.08)}
+    .option[aria-checked="true"]{border-color:var(--green);box-shadow:0 0 0 3px rgba(38,161,123,.15)}
+    .opt-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .plazo{font-weight:700;color:#0f172a}
+    .period{font-size:12px;color:#334155;border:1px solid #e2e8f0;padding:2px 6px;border-radius:999px}
+    .rate{font-weight:700;color:var(--blue)}
+    .interest{font-size:12px;color:#0f766e}
+    .disabled{opacity:.5;pointer-events:none}
+
+    .actions{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
+    .btn{appearance:none;border:none;border-radius:12px;padding:12px 16px;font-weight:700;cursor:pointer}
+    .btn-primary{background:var(--green);color:#fff}
+    .btn-primary:disabled{background:#9ca3af;cursor:not-allowed}
+
+    .result{margin-top:16px;border:1px solid #d1fae5;background:#ecfdf5;border-radius:14px;padding:12px}
+    .note{color:#475569;font-size:12px;margin-top:8px}
+
+    @media (max-width:600px){
+      .opt-top{flex-direction:column;align-items:flex-start;gap:6px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card" aria-labelledby="title">
+      <h1 id="title">Calculadora de Intereses de Depósito a Plazo Fijo</h1>
+      <p class="subtitle">Paso 1: ingresa el monto. Paso 2: elige un botón (Plazo × Forma de pago × Tasa). Paso 3: Calcula.</p>
+
+      <div class="grid">
+        <div class="col-12">
+          <label for="monto">Monto (USD)</label>
+          <div class="input" id="monto-wrapper">
+            <span>$</span>
+            <input id="monto" type="text" inputmode="decimal" placeholder="12,500" aria-describedby="monto-hint" />
+          </div>
+          <div class="hint" id="monto-hint">Usa solo números. Se aplican separadores de miles automáticamente.</div>
+        </div>
+
+        <div class="col-12">
+          <label>Selecciona un producto</label>
+          <div class="chips" id="chips"></div>
+          <div id="options" class="options" role="radiogroup" aria-label="Opciones de plazo y forma de pago"></div>
+          <div class="hint">Las <strong>tasas son fijas</strong> por combinación de Plazo × Forma de pago. El <strong>interés estimado</strong> depende del monto.</div>
+        </div>
+
+        <div class="col-12 actions">
+          <button id="btnCalcular" class="btn btn-primary" disabled>Calcular</button>
+        </div>
+
+        <div id="resultado" class="col-12 result" hidden></div>
+      </div>
+
+      <p class="note">Cálculo referencial con interés simple; no considera capitalización ni retenciones/impuestos.</p>
+    </section>
+  </main>
+
+  <script>
+    const RATES = {
+      1:   { Mensual: 3.00 },
+      2:   { Mensual: 3.00 },
+      3:   { Trimestral: 3.50 },
+      6:   { Semestral: 4.15 },
+      9:   { Anual: 4.25 },
+      12:  { Mensual: 4.55, Trimestral: 4.55, Semestral: 4.55, Anual: 4.75 },
+      18:  { Mensual: 4.55, Trimestral: 4.55, Semestral: 4.55, Anual: 4.75 },
+      24:  { Mensual: 4.35, Trimestral: 4.35, Semestral: 4.35, Anual: 4.50 }
+    };
+
+    const fmtMoney = (v) => v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const fmtPct = (v) => `${Number(v).toFixed(2)}%`;
+    const parseNum = (s) => {const n = parseFloat(String(s).replace(/[^0-9.]/g, ''));return isNaN(n) ? 0 : n;};
+
+    let selectedKey = null;
+
+    const inputMonto = document.getElementById('monto');
+    const optionsEl = document.getElementById('options');
+    const chipsEl = document.getElementById('chips');
+    const btnCalcular = document.getElementById('btnCalcular');
+    const resultado = document.getElementById('resultado');
+
+    const plazos = Object.keys(RATES).map(Number).sort((a,b)=>a-b);
+    let activePlazo = null;
+
+    function buildChips(){
+      chipsEl.innerHTML = '';
+      const all = document.createElement('button');
+      all.type = 'button'; all.className = 'chip' + (activePlazo===null?' active':'');
+      all.textContent = 'Todos';
+      all.addEventListener('click',()=>{activePlazo=null;buildOptions();updateInterests();});
+      chipsEl.appendChild(all);
+      plazos.forEach(p=>{
+        const b = document.createElement('button');
+        b.type='button'; b.className='chip'+(activePlazo===p?' active':'');
+        b.textContent = `${p}m`;
+        b.addEventListener('click',()=>{activePlazo=p;buildOptions();updateInterests();});
+        chipsEl.appendChild(b);
+      });
+    }
+
+    function buildOptions(){
+      optionsEl.innerHTML='';
+      const amount = parseNum(inputMonto.value);
+      const disabled = !(amount > 0);
+      const keys = [];
+      for(const plazo of plazos){
+        if(activePlazo!==null && plazo!==activePlazo) continue;
+        const perObj = RATES[plazo];
+        for(const periodicidad of Object.keys(perObj)){
+          const tasa = perObj[periodicidad];
+          const key = `${plazo}|${periodicidad}|${tasa}`;
+          keys.push(key);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'option' + (disabled?' disabled':'');
+          btn.setAttribute('role','radio');
+          btn.setAttribute('aria-checked', String(selectedKey===key));
+          btn.dataset.key = key;
+
+          const top = document.createElement('div'); top.className='opt-top';
+          const divLeft = document.createElement('div');
+          const plazoEl = document.createElement('div'); plazoEl.className='plazo'; plazoEl.textContent = `${plazo} meses`;
+          const periodEl = document.createElement('div'); periodEl.className='period'; periodEl.textContent = `Forma de pago: ${periodicidad}`;
+          divLeft.appendChild(plazoEl); divLeft.appendChild(periodEl);
+          const rateEl = document.createElement('div'); rateEl.className='rate'; rateEl.textContent = fmtPct(tasa);
+          top.appendChild(divLeft); top.appendChild(rateEl);
+
+          const interestEl = document.createElement('div'); interestEl.className='interest';
+          interestEl.textContent = disabled ? 'Ingrese un monto para ver el interés estimado' : `Interés estimado: ${fmtMoney(amount * (tasa/100) * (plazo/12))}`;
+
+          btn.appendChild(top); btn.appendChild(interestEl);
+
+          btn.addEventListener('click', ()=>{ if (parseNum(inputMonto.value) <= 0) return; setSelected(key); });
+          btn.addEventListener('keydown', (e)=>{ if(['Enter',' '].includes(e.key)) { e.preventDefault(); if (parseNum(inputMonto.value) > 0) setSelected(key); } });
+
+          optionsEl.appendChild(btn);
+        }
+      }
+      if(selectedKey && !keys.includes(selectedKey)) setSelected(null);
+      updateCalculateState();
+      buildChips();
+    }
+
+    function setSelected(key){
+      selectedKey = key;
+      const nodes = optionsEl.querySelectorAll('.option');
+      nodes.forEach(n=>{const active = n.dataset.key === selectedKey;n.setAttribute('aria-checked', String(active));});
+      updateCalculateState();
+    }
+
+    function updateInterests(){
+      const amount = parseNum(inputMonto.value);
+      const disabled = !(amount > 0);
+      optionsEl.querySelectorAll('.option').forEach(opt=>{
+        const [plazo, periodicidad, tasa] = opt.dataset.key.split('|');
+        const interestEl = opt.querySelector('.interest');
+        if(disabled){opt.classList.add('disabled');interestEl.textContent = 'Ingrese un monto para ver el interés estimado';}
+        else {opt.classList.remove('disabled');const interes = amount * (parseFloat(tasa)/100) * (parseInt(plazo)/12);interestEl.textContent = `Interés estimado: ${fmtMoney(interes)}`;}
+      });
+      updateCalculateState();
+    }
+
+    function updateCalculateState(){
+      const amount = parseNum(inputMonto.value);
+      const ok = amount>0 && !!selectedKey;
+      btnCalcular.disabled = !ok;
+    }
+
+    inputMonto.addEventListener('input', ()=>{const raw = parseNum(inputMonto.value);inputMonto.value = raw ? raw.toLocaleString('en-US') : '';updateInterests();});
+
+    btnCalcular.addEventListener('click', ()=>{
+      if(!selectedKey) return;
+      const amount = parseNum(inputMonto.value);
+      const [plazo, periodicidad, tasa] = selectedKey.split('|');
+      const interes = amount * (parseFloat(tasa)/100) * (parseInt(plazo)/12);
+
+      resultado.hidden = false;
+      resultado.innerHTML = `
+        <strong>Monto del Depósito:</strong> ${fmtMoney(amount)}<br />
+        <strong>Plazo:</strong> ${parseInt(plazo)} meses<br />
+        <strong>Forma de pago de intereses:</strong> Forma de pago: ${periodicidad}<br />
+        <strong>Tasa:</strong> ${fmtPct(tasa)}<br />
+        <strong>Intereses a recibir al vencimiento:</strong> ${fmtMoney(interes)}
+      `;
+    });
+
+    buildOptions();
+    updateInterests();
+  </script>
+</body>
+</html>
